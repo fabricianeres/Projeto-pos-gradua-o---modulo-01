@@ -1,0 +1,169 @@
+@startuml
+title Casos de uso — API de cadastro de notas
+left to right direction
+
+actor "Portal do professor" as Portal
+rectangle "API de cadastro de notas" {
+  usecase "Autenticar sistema\npor chave de API" as UCAuth
+  usecase "Cadastrar N1 ou N2" as UCCreate
+  usecase "Consultar notas e média" as UCRead
+  usecase "Atualizar nota" as UCUpdate
+  usecase "Excluir nota logicamente" as UCDelete
+  usecase "Validar oferta e matrícula" as UCEnrollment
+  usecase "Validar escala e posição\n(N1 ou N2)" as UCValidation
+  usecase "Calcular média" as UCAverage
+  usecase "Registrar acesso e auditoria" as UCAudit
+}
+
+Portal --> UCAuth
+Portal --> UCCreate
+Portal --> UCRead
+Portal --> UCUpdate
+Portal --> UCDelete
+UCCreate .> UCAuth : <<include>>
+UCRead .> UCAuth : <<include>>
+UCUpdate .> UCAuth : <<include>>
+UCDelete .> UCAuth : <<include>>
+UCCreate .> UCEnrollment : <<include>>
+UCCreate .> UCValidation : <<include>>
+UCCreate .> UCAudit : <<include>>
+UCRead .> UCAverage : <<include>>
+UCRead .> UCAudit : <<include>>
+UCUpdate .> UCValidation : <<include>>
+UCUpdate .> UCAudit : <<include>>
+UCDelete .> UCAudit : <<include>>
+UCAuth .> UCAudit : <<include>>
+
+note bottom of Portal
+O portal autentica o professor e aplica
+as permissões por perfil.
+end note
+
+note bottom of UCAuth
+A chave autentica o portal como consumidor.
+Não substitui a identidade do professor.
+end note
+@enduml
+
+@startuml
+title Diagrama de classes conceitual — notas por disciplina
+hide methods
+skinparam classAttributeIconSize 0
+
+class Estudante {
+  estudanteId: UUID
+}
+
+class Disciplina {
+  disciplinaId: UUID
+  nome: String
+}
+
+class OfertaDisciplina {
+  ofertaId: UUID
+  turma: String
+  periodoLetivo: String
+  lancamentoAberto: Boolean
+}
+
+class Matricula {
+  matriculaId: UUID
+  status: String
+  /media: Decimal [0..1]
+}
+
+class Nota {
+  notaId: UUID
+  posicao: PosicaoNota
+  valor: Decimal
+  observacao: String [0..1]
+  criadaEm: DateTime
+  atualizadaEm: DateTime [0..1]
+  excluidaEm: DateTime [0..1]
+}
+
+enum PosicaoNota {
+  N1
+  N2
+}
+
+class EventoAuditoria {
+  eventoId: UUID
+  tipo: TipoEvento
+  recurso: String
+  responsavelProfessorId: UUID [0..1]
+  ocorridoEm: DateTime
+  valorAnterior: Decimal [0..1]
+  valorNovo: Decimal [0..1]
+}
+
+enum TipoEvento {
+  ACESSO
+  CRIACAO
+  ATUALIZACAO
+  EXCLUSAO_LOGICA
+}
+
+Disciplina "1" -- "0..*" OfertaDisciplina
+Estudante "1" -- "0..*" Matricula
+OfertaDisciplina "1" -- "0..*" Matricula
+Matricula "1" -- "0..2" Nota
+Nota --> PosicaoNota
+EventoAuditoria "0..*" --> "0..1" Matricula : recurso associado
+EventoAuditoria --> TipoEvento
+
+note right of Nota
+Valor entre 0 e 10, com no máximo
+uma casa decimal.
+Uma N1 e uma N2 por matrícula.
+Exclusão lógica: excluidaEm preenchida.
+end note
+
+note bottom of Matricula
+Media é derivada quando N1 e N2
+estão ativas: (N1 + N2) / 2,
+arredondada para uma casa decimal.
+end note
+
+note bottom of EventoAuditoria
+Registros mantidos por tempo indeterminado.
+O professor responsável é identificado
+pelo portal; acessos sem professor associado
+podem ter responsavelProfessorId vazio.
+end note
+@enduml
+
+@startuml
+title Diagrama de sequência — cadastro de nota
+actor "Professor" as Professor
+participant "Portal do professor" as Portal
+participant "API de notas" as API
+database "Base acadêmica" as DB
+
+Professor -> Portal: Informa estudante, oferta,\nposição (N1 ou N2) e valor
+Portal -> Portal: Autentica professor e verifica perfil
+Portal -> API: POST /ofertas/{ofertaId}/notas\nX-API-Key + identidade do professor
+API -> API: Valida chave de API
+
+alt Chave ausente ou inválida
+  API -> DB: Registra tentativa de acesso
+  API --> Portal: 401 Unauthorized
+  Portal --> Professor: Informa falha de acesso
+else Chave válida
+  API -> DB: Registra acesso à API
+  API -> DB: Consulta oferta e matrícula
+  DB --> API: Dados da oferta e matrícula
+  API -> API: Valida matrícula, posição e valor
+
+  alt Dados inválidos ou nota duplicada
+    API -> API: Associa resultado à auditoria do acesso
+    API --> Portal: 4xx com código e mensagem
+    Portal --> Professor: Exibe erro
+  else Dados válidos
+    API -> DB: Grava nota e evento de auditoria\nna mesma transação
+    DB --> API: Nota persistida
+    API --> Portal: 201 Created + nota
+    Portal --> Professor: Confirma cadastro
+  end
+end
+@enduml

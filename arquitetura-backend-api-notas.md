@@ -7,17 +7,17 @@
 
 Este documento propõe uma organização em camadas para implementar a API REST de cadastro de notas. A arquitetura não depende de uma linguagem, framework ou banco de dados específicos; essas tecnologias podem ser escolhidas durante a implementação sem alterar as responsabilidades descritas aqui.
 
-A API atende ao portal do professor. Ela valida a existência da oferta e da matrícula e aplica as regras de negócio das notas. A autenticação do professor e a autorização por perfil permanecem sob responsabilidade do portal, conforme os requisitos. A página de testes descrita em `arquitetura-frontend-teste-api-notas.md` é uma interface de desenvolvimento e não substitui o portal de produção.
+A API atende ao portal do professor em produção e, no MVP, à página local de testes em Vue.js 3. Ela valida a existência da oferta e da matrícula e aplica as regras de negócio das notas. Na página local, a API oferece autenticação simples com credenciais exclusivas de teste, apenas para associar as operações ao professor nos registros de auditoria; essa autenticação não concede permissões nem substitui autenticação institucional e autorização por perfil, que permanecem sob responsabilidade do portal em produção.
 
 ## 2. Visão geral
 
 As dependências apontam para dentro: a camada de domínio não depende de HTTP, banco de dados, framework ou interface externa. As camadas externas traduzem as entradas e saídas e conectam os casos de uso às tecnologias concretas.
 
 ```text
-Portal do professor / página de testes
+Portal do professor (produção) / página local Vue.js 3 (MVP)
                  |
                  v
-       Borda HTTP e segurança
+     API local em loopback
                  |
                  v
       Apresentação (rotas/DTOs)
@@ -43,15 +43,16 @@ Portal do professor / página de testes
 
 ### 3.1. Borda HTTP e segurança
 
-Responsável por receber requisições HTTPS e aplicar controles transversais antes de encaminhá-las à aplicação:
+Responsável por receber requisições locais e aplicar controles transversais antes de encaminhá-las à aplicação:
 
-- no MVP, não exigir nem validar chave de API;
-- manter a API acessível somente em ambiente controlado, com restrição de rede e sem exposição pública;
-- identificar a identidade do professor em um contexto confiável, quando fornecida pelo portal;
+- vincular o servidor da API a `localhost`/`127.0.0.1`, sem escutar em interfaces de rede externas;
+- não exigir chave de API no MVP;
+- permitir HTTP somente no loopback local; usar HTTPS se houver qualquer acesso remoto futuro;
+- encaminhar as chamadas de autenticação local e validar a sessão/token nas operações que exigem identidade para auditoria;
 - atribuir identificador de correlação à requisição;
-- aplicar limites de tamanho e, se necessário, de taxa;
+- aplicar limites de tamanho e, se necessário, de taxa.
 
-O portal autentica o professor e aplica as permissões por perfil. A retirada da chave no MVP não transfere essas responsabilidades para a API nem deve resultar em exposição pública do serviço. A identidade do professor usada na auditoria não deve ser aceita de um cabeçalho arbitrário enviado diretamente pelo navegador. O mecanismo confiável de propagação dessa identidade (por exemplo, token assinado validado pela API ou infraestrutura de gateway protegida) é uma decisão pendente e deve ser definido antes da implementação. Não registrar tokens, credenciais ou outros segredos nos logs.
+ O login local usa identificador e senha de teste, não credenciais institucionais. A API valida as credenciais e emite uma sessão/token de curta duração; nas operações subsequentes, deriva o identificador de professor do token validado. Não confiar em identificador enviado livremente no corpo ou em cabeçalho arbitrário. Esse mecanismo identifica o responsável pela auditoria, mas não aplica autorização por perfil. Não registrar senhas, tokens ou outros segredos nos logs.
 
 ### 3.2. Apresentação
 
@@ -67,6 +68,8 @@ Rotas previstas:
 
 | Método | Rota | Responsabilidade |
 |---|---|---|
+| `POST` | `/api/v1/auth/sessao` | Validar credenciais locais de teste e iniciar sessão para auditoria |
+| `DELETE` | `/api/v1/auth/sessao` | Encerrar a sessão local |
 | `POST` | `/api/v1/ofertas/{ofertaId}/notas` | Cadastrar N1 ou N2 |
 | `GET` | `/api/v1/notas/{notaId}` | Consultar uma nota |
 | `GET` | `/api/v1/ofertas/{ofertaId}/notas` | Listar notas da oferta |
@@ -74,7 +77,7 @@ Rotas previstas:
 | `PATCH` | `/api/v1/notas/{notaId}` | Atualizar parcialmente uma nota |
 | `DELETE` | `/api/v1/notas/{notaId}` | Excluir logicamente uma nota |
 
-As listagens devem aceitar paginação e retornar no máximo 10 registros por página. Os parâmetros de paginação e ordenação devem ser documentados no OpenAPI.
+As operações de notas exigem uma sessão local válida para atribuir o acesso e as alterações ao professor autenticado. Essa sessão não concede nem representa autorização acadêmica: a API não decide se o professor tem permissão por perfil ou oferta. As listagens devem aceitar paginação e retornar no máximo 10 registros por página. As rotas e esquemas de autenticação da sessão, paginação e ordenação devem ser documentados no OpenAPI.
 
 ### 3.3. Aplicação
 
@@ -85,6 +88,8 @@ Responsável por coordenar os casos de uso, sem conter detalhes de protocolo ou 
 - `ListarNotasDaOferta` e `ListarNotasDoEstudante`: consultam dados paginados e calculam a média quando aplicável;
 - `AtualizarNota`: aplica a atualização parcial permitida e registra auditoria;
 - `ExcluirNotaLogicamente`: marca a nota como excluída sem apagar o registro;
+- `AutenticarProfessorLocal`: valida credenciais de teste e emite sessão de curta duração para auditoria;
+- `EncerrarSessaoLocal`: invalida a sessão, quando houver suporte a revogação;
 - `RegistrarAcesso`: registra o acesso conforme a política de auditoria.
 
 Os casos de uso coordenam transações quando a alteração da nota e seu evento de auditoria precisam ser persistidos juntos. A camada também decide quais portas de repositório ou integração chamar e trata conflitos de persistência como erros de negócio conhecidos.
@@ -118,25 +123,27 @@ A camada de domínio e os casos de uso dependem de interfaces; a infraestrutura 
 
 ## 4. Fluxo de cadastro
 
-1. O cliente envia `POST /api/v1/ofertas/{ofertaId}/notas` por HTTPS.
-2. A borda recebe a chamada somente por uma origem/rede autorizada e obtém, de contexto confiável, a identidade do professor para auditoria, se disponível.
-3. A apresentação valida o formato e cria o comando de cadastro.
-4. O caso de uso consulta a oferta e a matrícula pelo adaptador acadêmico.
-5. O domínio valida posição e valor; o repositório verifica duplicidade.
-6. Em uma transação, o sistema persiste a nota e o evento de criação com responsável e horário UTC.
-7. A apresentação retorna `201 Created` com o recurso criado. Erros conhecidos são mapeados para o código HTTP e o esquema de erro documentados.
+1. O professor informa credenciais locais de teste em `POST /api/v1/auth/sessao`.
+2. A API valida as credenciais e devolve uma sessão/token de curta duração associado ao identificador autenticado.
+3. O cliente envia `POST /api/v1/ofertas/{ofertaId}/notas` com a sessão/token.
+4. A borda valida a sessão e obtém dela a identidade do professor; a API não aplica autorização por perfil.
+5. A apresentação valida o formato e cria o comando de cadastro.
+6. O caso de uso consulta a oferta e a matrícula pelo adaptador acadêmico.
+7. O domínio valida posição e valor; o repositório verifica duplicidade.
+8. Em uma transação, o sistema persiste a nota e o evento de criação com responsável e horário UTC.
+9. A apresentação retorna `201 Created` com o recurso criado. Erros conhecidos são mapeados para o código HTTP e o esquema de erro documentados.
 
 ## 5. Persistência e auditoria
 
-O modelo persistido deve representar a nota, sua situação ativa/excluída e os eventos de auditoria. Cada evento deve conter, conforme o tipo de operação, recurso, tipo de evento, responsável autenticado pelo portal, instante UTC e alterações relevantes (por exemplo, valor anterior e novo). A auditoria de acesso não deve registrar segredos ou conteúdo desnecessário.
+O modelo persistido deve representar a nota, sua situação ativa/excluída e os eventos de auditoria. Cada evento deve conter, conforme o tipo de operação, recurso, tipo de evento, responsável identificado por sessão local de teste ou pelo contexto autenticado do portal, instante UTC e alterações relevantes (por exemplo, valor anterior e novo). Se a identidade não puder ser validada, não atribuir a operação a um professor; registrar o acesso como não autenticado conforme a política definida. A auditoria não deve registrar senhas, tokens ou conteúdo desnecessário.
 
 Consultas regulares não devem retornar notas excluídas logicamente nem incluí-las no cálculo da média. A retenção de auditoria segue o requisito de tempo indeterminado. Erros ao registrar auditoria devem ser tratados explicitamente; uma alteração não deve aparentar sucesso se a persistência transacional exigida falhar.
 
 ## 6. Erros, documentação e observabilidade
 
-- Publicar o contrato em OpenAPI, incluindo parâmetros, esquemas, paginação e respostas de erro; documentar que o MVP não exige chave de API.
+- Publicar o contrato em OpenAPI, incluindo autenticação local de teste, parâmetros, esquemas, paginação e respostas de erro; documentar que o MVP não exige chave de API.
 - Usar o formato consistente `{ codigo, mensagem, detalhes }` para erros de validação e negócio.
-- Mapear erros de forma previsível: `400` para entrada malformada, `404` para recurso inexistente conforme a política, `409` para duplicidade, `422` para regra incompatível e `500` para falha inesperada.
+- Mapear erros de forma previsível: `400` para entrada malformada, `401` para credenciais inválidas ou sessão ausente/inválida/expirada, `404` para recurso inexistente conforme a política, `409` para duplicidade, `422` para regra incompatível e `500` para falha inesperada.
 - Não expor stack traces ou detalhes internos em respostas `500`.
 - Registrar erros e métricas operacionais sem dados pessoais ou segredos; usar identificador de correlação para relacionar logs.
 - Monitorar disponibilidade e latência conforme os limites especificados nos requisitos.
@@ -153,6 +160,7 @@ Consultas regulares não devem retornar notas excluídas logicamente nem incluí
 
 1. Linguagem, framework HTTP, banco de dados e mecanismo de migração.
 2. Como validar oferta e matrícula (acesso ao mesmo banco ou serviço acadêmico).
-3. Como transmitir e validar com segurança a identidade do professor autenticado pelo portal.
-4. Controles de rede e ambientes que limitarão o acesso à API sem chave no MVP.
-5. Parâmetros exatos de paginação, ordenação e política de exposição de recursos inexistentes.
+3. Formato, duração, armazenamento e revogação da sessão/token local e forma de criar/armazenar credenciais de teste com senha protegida por hash.
+4. Confirmar que frontend e API escutam em loopback e definir a origem CORS local exata, caso as portas sejam diferentes.
+5. Protocolo confiável para transmitir à API a identidade autenticada do professor no portal de produção.
+6. Parâmetros exatos de paginação, ordenação e política de exposição de recursos inexistentes.

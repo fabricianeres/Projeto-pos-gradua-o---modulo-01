@@ -26,11 +26,11 @@ Definir os requisitos de uma API para cadastrar, consultar, atualizar e remover 
 
 Esses dados são considerados previamente existentes em sistemas acadêmicos ou serviços integrados.
 
-O consumo da API será feito exclusivamente pelo portal do professor. O controle de acesso por perfil e a autorização dos usuários são responsabilidade do portal e estão fora do escopo desta API.
+Em produção, o consumo da API será feito pelo portal do professor. Para o MVP, haverá também uma página local de testes em Vue.js 3, que chamará diretamente a API local sem proxy ou chave de API. A autenticação local simples dessa página serve exclusivamente para identificar o professor nos registros de auditoria; não implementa autorização por perfil. Em produção, a autenticação institucional e o controle de acesso por perfil continuam sendo responsabilidade do portal.
 
 ## 3. Premissas e termos
 
-- A API será REST e utilizará JSON sobre HTTPS.
+- A API será REST e utilizará JSON; no MVP local, HTTP é permitido exclusivamente em `localhost`/`127.0.0.1`. Qualquer acesso remoto exige HTTPS e reavaliação dos controles de segurança.
 - Uma nota pertence a um estudante matriculado em uma disciplina.
 - Nesta proposta, a escala de notas é de **0 a 10**, inclusive, com até uma casa decimal (por exemplo, 8,5).
 - A instituição utiliza somente duas notas por estudante em cada oferta de disciplina: N1 e N2.
@@ -38,20 +38,23 @@ O consumo da API será feito exclusivamente pelo portal do professor. O controle
 - Cada estudante pode ter no máximo uma N1 e uma N2 por oferta de disciplina.
 - “Oferta de disciplina” identifica a disciplina em uma turma e período letivo específicos. Se o sistema não utilizar ofertas, o identificador da disciplina deve cumprir esse papel.
 - Os identificadores de estudantes e disciplinas são fornecidos pelos sistemas responsáveis por esses cadastros.
+- No MVP, a página de testes e a API executam localmente e aceitam conexões somente por `localhost`/`127.0.0.1`.
+- A página usa credenciais locais de teste, distintas das credenciais institucionais, para autenticar o professor exclusivamente para auditoria.
 
 ## 4. Sistema consumidor
 
 | Sistema | Responsabilidade |
 |---|---|
 | Portal do professor | Consumir a API para cadastrar, consultar, atualizar e remover notas, aplicando o controle de acesso por perfil e as permissões dos usuários. |
+| Página local de testes (MVP) | Exercitar as operações da API local; autenticar com credenciais exclusivas de teste para identificar o professor na auditoria, sem autorização por perfil. |
 
-A API não implementa autorização por perfil nem acesso direto para estudantes ou administradores. Ela valida a existência da oferta e da matrícula, os dados enviados e as regras de negócio. O acesso técnico à API deve ser restrito ao portal do professor conforme a arquitetura de implantação.
+A API não implementa autorização por perfil nem acesso direto para estudantes ou administradores. Ela valida a existência da oferta e da matrícula, os dados enviados e as regras de negócio. No MVP, a API deve escutar somente em loopback, não exigir chave de API e exigir uma sessão local válida nas operações de notas para identificar o responsável pela auditoria. A sessão local não concede permissões acadêmicas.
 
 ## 5. Requisitos funcionais
 
 ### RF-01 — Cadastrar nota
 
-O sistema deve permitir que o portal do professor cadastre uma nota informando:
+O sistema deve permitir que o portal do professor ou, no MVP, a página local de testes com sessão válida cadastre uma nota informando:
 
 - identificador da oferta de disciplina;
 - identificador do estudante;
@@ -59,7 +62,7 @@ O sistema deve permitir que o portal do professor cadastre uma nota informando:
 - valor da nota;
 - observação opcional.
 
-Ao cadastrar, a API deve confirmar que a oferta existe e que o estudante está matriculado nela. A autorização do usuário para lançar notas é verificada pelo portal do professor, fora do escopo da API.
+Ao cadastrar, a API deve confirmar que a oferta existe e que o estudante está matriculado nela. Em produção, a autorização do usuário para lançar notas é verificada pelo portal do professor, fora do escopo da API. No MVP local, o login serve apenas para identificar o professor na auditoria e não executa autorização.
 
 O cadastro deve registrar para auditoria o identificador do professor autenticado no portal como responsável, além da data e hora da operação.
 
@@ -78,15 +81,21 @@ A API deve calcular e retornar a média aritmética de N1 e N2 para cada estudan
 
 ### RF-04 — Atualizar nota
 
-O sistema deve permitir que o portal do professor atualize o valor e os dados descritivos de uma nota existente. Cada atualização deve registrar o valor anterior, o novo valor, o identificador do professor autenticado no portal como responsável e a data e hora da alteração.
+O sistema deve permitir que o portal do professor atualize o valor e os dados descritivos de uma nota existente. No MVP, a página local pode realizar a operação com sessão válida. Cada atualização deve registrar o valor anterior, o novo valor, o identificador do professor autenticado como responsável e a data e hora da alteração.
 
 ### RF-05 — Remover nota
 
-O sistema deve permitir que o portal do professor faça a exclusão lógica de uma nota existente. A nota será marcada como excluída e deixará de aparecer nas consultas regulares, sem apagar o registro da base nem seu histórico de auditoria. A operação deve registrar o identificador do professor autenticado no portal como responsável e a data e hora da exclusão.
+O sistema deve permitir que o portal do professor faça a exclusão lógica de uma nota existente. No MVP, a página local pode realizar a operação com sessão válida. A nota será marcada como excluída e deixará de aparecer nas consultas regulares, sem apagar o registro da base nem seu histórico de auditoria. A operação deve registrar o identificador do professor autenticado como responsável e a data e hora da exclusão.
 
 ### RF-06 — Limitar notas por estudante
 
 O sistema deve permitir somente N1 e N2 para cada combinação de oferta de disciplina e estudante. Uma tentativa de cadastrar novamente uma nota já existente para a mesma posição deve retornar conflito, sem substituir silenciosamente o valor cadastrado.
+
+### RF-07 — Identificar professor para auditoria no MVP
+
+A API deve oferecer autenticação local simples para a página de testes, usando identificador do professor e senha de teste que não sejam credenciais institucionais. Após autenticação bem-sucedida, deve emitir uma sessão/token de curta duração associado à identidade validada. As operações de notas devem exigir essa sessão no MVP e derivar dela a identidade registrada na auditoria; não devem confiar em um identificador de professor enviado livremente no corpo ou em cabeçalho.
+
+Essa autenticação tem finalidade exclusiva de auditoria: não implementa autorização por perfil, oferta ou operação. A API não deve receber nem armazenar senhas em texto puro. A sessão deve poder ser encerrada pela página; se forem usados tokens sem estado, o comportamento de encerramento e expiração deve ser documentado.
 
 ## 6. Regras de negócio e validações
 
@@ -107,6 +116,8 @@ Prefixo sugerido: `/api/v1`
 
 | Método e rota | Descrição |
 |---|---|
+| `POST /auth/sessao` | Autentica credenciais locais de teste e inicia sessão para auditoria |
+| `DELETE /auth/sessao` | Encerra a sessão local |
 | `POST /ofertas/{ofertaId}/notas` | Cadastra uma nota |
 | `GET /notas/{notaId}` | Consulta uma nota |
 | `GET /ofertas/{ofertaId}/notas` | Lista notas da oferta |
@@ -114,7 +125,7 @@ Prefixo sugerido: `/api/v1`
 | `PATCH /notas/{notaId}` | Atualiza parcialmente uma nota |
 | `DELETE /notas/{notaId}` | Faz a exclusão lógica de uma nota |
 
-As rotas são consumidas exclusivamente pelo portal do professor. O portal aplica as permissões dos usuários antes de realizar as operações.
+Em produção, o portal consome as rotas e aplica as permissões dos usuários antes de realizar as operações. No MVP, a página local de testes consome a API local com sessão de teste válida, usada apenas para auditoria.
 
 ### Exemplo de cadastro
 
@@ -132,9 +143,9 @@ Resposta de sucesso: `201 Created`, com a nota cadastrada e seu identificador. N
 
 ## 8. Requisitos não funcionais
 
-- **Segurança:** utilizar HTTPS. No MVP, a API não exigirá nem validará chave de API; deverá ser executada em ambiente controlado e ter seu acesso limitado por rede, sem exposição pública irrestrita. O portal autentica o professor com as credenciais institucionais e aplica a autorização por perfil; a API não recebe nem armazena a senha do professor. O portal deve transmitir a identidade autenticada do professor em contexto confiável para que a API registre o responsável pela operação. A necessidade de autenticação técnica da API deve ser reavaliada antes de qualquer exposição fora do ambiente controlado.
-- **Privacidade:** retornar somente os dados necessários; proteger dados acadêmicos contra acesso não autorizado, considerando o portal como único consumidor previsto.
-- **Auditoria:** registrar operações de criação, atualização e exclusão lógica, incluindo identificador do professor autenticado no portal como responsável, horário, recurso e alterações relevantes. Registrar também os acessos à API. Não registrar senhas, tokens ou outros segredos.
+- **Segurança:** no MVP local, a API deve escutar somente em `localhost`/`127.0.0.1`, sem exposição à rede, e não exigirá chave de API. A página de testes chamará a API diretamente, sem proxy. A autenticação simples com credenciais locais de teste é obrigatória para identificar o professor na auditoria, mas não concede autorização por perfil. Não usar nem armazenar credenciais institucionais ou senhas em texto puro. Em produção, o portal autentica o professor e aplica autorização por perfil; qualquer exposição da API fora do loopback exige reavaliação dos controles de segurança.
+- **Privacidade:** retornar somente os dados necessários; proteger dados acadêmicos contra acesso não autorizado. No MVP, a API local não deve ser acessível pela rede.
+- **Auditoria:** registrar operações de criação, atualização e exclusão lógica, incluindo identificador do professor autenticado pelo portal em produção ou pela sessão local de teste no MVP como responsável, horário, recurso e alterações relevantes. Registrar também os acessos à API. Não registrar senhas, tokens ou outros segredos.
 - **Integridade:** persistir cada alteração de forma transacional e aplicar restrições contra duplicidade.
 - **Disponibilidade:** manter disponibilidade mínima de 95% em cada mês.
 - **Desempenho:** responder em até 2 segundos para pelo menos 95% das requisições, sob carga de 5 requisições simultâneas.
@@ -166,6 +177,7 @@ A API deve utilizar códigos HTTP coerentes e um formato de erro consistente, po
 | `201 Created` | Nota cadastrada |
 | `204 No Content` | Remoção ou invalidação concluída |
 | `400 Bad Request` | Requisição malformada ou validação inválida |
+| `401 Unauthorized` | Credenciais locais inválidas ou sessão ausente, inválida ou expirada |
 | `404 Not Found` | Nota, oferta ou estudante inexistente, conforme a política de exposição |
 | `409 Conflict` | Nota duplicada ou conflito com o estado acadêmico |
 | `422 Unprocessable Content` | Requisição válida em formato, mas incompatível com regra de negócio |
@@ -173,17 +185,20 @@ A API deve utilizar códigos HTTP coerentes e um formato de erro consistente, po
 
 ## 10. Critérios de aceite
 
-1. O portal do professor consegue cadastrar N1 ou N2 com valor válido para estudante matriculado na oferta.
+1. O portal do professor em produção e a página local de testes conseguem cadastrar N1 ou N2 com valor válido para estudante matriculado na oferta.
 2. Notas abaixo de 0, acima de 10 ou com mais de uma casa decimal são rejeitadas com erro identificável.
 3. Uma nota para estudante não matriculado ou oferta inexistente não é cadastrada.
 4. Um lançamento duplicado de N1 ou N2 para o mesmo estudante e oferta retorna `409 Conflict` e não altera a nota já cadastrada.
 5. Quando N1 e N2 estão cadastradas e ativas, a média retornada é `(N1 + N2) / 2`, arredondada para uma casa decimal pelo critério aritmético; quando falta ou está excluída logicamente uma delas, a média é `null`.
-6. A API valida existência da oferta e matrícula, sem implementar autorização por perfil, que é aplicada pelo portal do professor.
+6. A API valida existência da oferta e matrícula sem implementar autorização por perfil; em produção, essa autorização é aplicada pelo portal, enquanto no MVP a sessão local serve somente para auditoria.
 7. Criações, alterações, exclusões lógicas e acessos à API ficam registrados; as notas excluídas logicamente e seus históricos não são apagados.
 8. Listagens são paginadas e retornam até 10 registros por página.
 9. A documentação OpenAPI descreve rotas, esquemas, validações e respostas de erro.
-10. No MVP, as operações funcionam sem chave de API e a API não fica publicamente acessível; o acesso ao ambiente é limitado por controles de rede.
+10. No MVP, a API local escuta somente em loopback e as operações funcionam sem chave de API ou proxy.
+11. A página local autentica credenciais exclusivas de teste; a API deriva a identidade do professor da sessão/token validado e a registra na auditoria, sem aplicar autorização por perfil.
 
 ## 11. Decisões pendentes para implementação
 
-- Definir o mecanismo seguro para transmitir à API a identidade autenticada do professor para fins de auditoria.
+- Definir o formato e o prazo da sessão/token local, o encerramento/revogação e a forma de criar e armazenar credenciais de teste com senha protegida por hash.
+- Confirmar portas locais e origem CORS exata, caso a página Vue e a API usem portas diferentes.
+- Definir o protocolo confiável para transmitir à API a identidade do professor autenticado pelo portal em produção.

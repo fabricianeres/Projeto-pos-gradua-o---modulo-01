@@ -132,9 +132,9 @@ Resposta de sucesso: `201 Created`, com a nota cadastrada e seu identificador. N
 
 ## 8. Requisitos não funcionais
 
-- **Segurança:** utilizar HTTPS e exigir uma chave de API para autenticar o portal do professor como sistema consumidor. O portal autentica o professor com as credenciais institucionais e aplica a autorização por perfil; a API não recebe nem armazena a senha do professor. O portal deve transmitir a identidade autenticada do professor em contexto confiável para que a API registre o responsável pela operação. As chaves devem ser armazenadas com segurança e permitir revogação e substituição.
+- **Segurança:** utilizar HTTPS. No MVP, a API não exigirá nem validará chave de API; deverá ser executada em ambiente controlado e ter seu acesso limitado por rede, sem exposição pública irrestrita. O portal autentica o professor com as credenciais institucionais e aplica a autorização por perfil; a API não recebe nem armazena a senha do professor. O portal deve transmitir a identidade autenticada do professor em contexto confiável para que a API registre o responsável pela operação. A necessidade de autenticação técnica da API deve ser reavaliada antes de qualquer exposição fora do ambiente controlado.
 - **Privacidade:** retornar somente os dados necessários; proteger dados acadêmicos contra acesso não autorizado, considerando o portal como único consumidor previsto.
-- **Auditoria:** registrar operações de criação, atualização e exclusão lógica, incluindo identificador do professor autenticado no portal como responsável, horário, recurso e alterações relevantes. Registrar também os acessos à API. Não registrar senhas, chaves de API ou tokens.
+- **Auditoria:** registrar operações de criação, atualização e exclusão lógica, incluindo identificador do professor autenticado no portal como responsável, horário, recurso e alterações relevantes. Registrar também os acessos à API. Não registrar senhas, tokens ou outros segredos.
 - **Integridade:** persistir cada alteração de forma transacional e aplicar restrições contra duplicidade.
 - **Disponibilidade:** manter disponibilidade mínima de 95% em cada mês.
 - **Desempenho:** responder em até 2 segundos para pelo menos 95% das requisições, sob carga de 5 requisições simultâneas.
@@ -166,7 +166,6 @@ A API deve utilizar códigos HTTP coerentes e um formato de erro consistente, po
 | `201 Created` | Nota cadastrada |
 | `204 No Content` | Remoção ou invalidação concluída |
 | `400 Bad Request` | Requisição malformada ou validação inválida |
-| `401 Unauthorized` | Chave de API ausente ou inválida |
 | `404 Not Found` | Nota, oferta ou estudante inexistente, conforme a política de exposição |
 | `409 Conflict` | Nota duplicada ou conflito com o estado acadêmico |
 | `422 Unprocessable Content` | Requisição válida em formato, mas incompatível com regra de negócio |
@@ -183,7 +182,7 @@ A API deve utilizar códigos HTTP coerentes e um formato de erro consistente, po
 7. Criações, alterações, exclusões lógicas e acessos à API ficam registrados; as notas excluídas logicamente e seus históricos não são apagados.
 8. Listagens são paginadas e retornam até 10 registros por página.
 9. A documentação OpenAPI descreve rotas, esquemas, validações e respostas de erro.
-10. Requisições sem chave de API ou com chave inválida são rejeitadas com `401 Unauthorized`.
+10. No MVP, as operações funcionam sem chave de API e a API não fica publicamente acessível; o acesso ao ambiente é limitado por controles de rede.
 
 ## 11. Decisões pendentes para implementação
 

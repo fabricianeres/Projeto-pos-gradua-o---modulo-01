@@ -6,9 +6,9 @@
 
 ## 1. Objetivo e decisões da proposta
 
-Esta proposta modela o armazenamento das notas, das matrículas necessárias para validá-las, das chaves de acesso do portal e dos registros de auditoria.
+Esta proposta modela o armazenamento das notas, das matrículas necessárias para validá-las e dos registros de auditoria.
 
-- O banco da API é responsável por notas, chaves de API e auditoria.
+- No MVP, o banco da API é responsável por notas e auditoria; não há armazenamento de chaves de API.
 - Estudantes, disciplinas e ofertas são cadastrados em sistemas acadêmicos existentes. A API não passa a ser proprietária desses cadastros.
 - Para validar matrícula e aplicar chaves estrangeiras sem depender de uma transação distribuída, a proposta mantém uma projeção local de matrículas. Essa projeção é sincronizada a partir do sistema acadêmico e somente leitura para a API. Se os sistemas compartilharem o mesmo banco, ela pode ser substituída por referências às tabelas acadêmicas oficiais.
 - O identificador do professor vem do contexto autenticado do portal e é armazenado como identificador externo; a API não armazena a senha nem cria cadastro de professores.
@@ -21,7 +21,6 @@ Esta proposta modela o armazenamento das notas, das matrículas necessárias par
 ```mermaid
 erDiagram
     MATRICULA ||--o{ NOTA : "possui até duas notas ativas"
-    API_CLIENTE ||--o{ AUDITORIA : "origina requisições"
     NOTA o|--o{ AUDITORIA : "pode ser referenciada"
 
     MATRICULA {
@@ -46,17 +45,8 @@ erDiagram
         timestamptz excluida_em
     }
 
-    API_CLIENTE {
-        uuid api_cliente_id PK
-        varchar nome
-        bytea segredo_hash UK
-        timestamptz criada_em
-        timestamptz revogada_em
-    }
-
     AUDITORIA {
         uuid auditoria_id PK
-        uuid api_cliente_id FK
         uuid nota_id FK
         varchar tipo_evento
         varchar professor_id
@@ -82,13 +72,9 @@ Armazena N1 ou N2 associada à matrícula. O valor fica entre 0 e 10, com no má
 
 `criado_por`, `atualizado_por` e `excluido_por` guardam o identificador do professor fornecido em contexto confiável pelo portal. A trilha completa de alterações fica em `auditoria`.
 
-### `api_cliente`
-
-Representa uma credencial do portal autorizado a consumir a API. Cada linha corresponde a uma chave e guarda somente o hash do segredo, nunca a chave em texto puro. A chave pode ser revogada sem apagar o histórico associado. Para rotação, podem existir várias linhas com o mesmo nome de cliente e chaves distintas, permitindo manter a chave anterior ativa durante a transição.
-
 ### `auditoria`
 
-Registra acessos e operações de nota, incluindo requisições recusadas quando possível. Guarda o resultado HTTP, a chave reconhecida (se houver), a identidade do professor quando conhecida e os estados anterior e novo nas alterações. Não deve armazenar a chave de API, senhas, tokens ou outros segredos. Os registros são mantidos por tempo indeterminado e não devem ser atualizados ou removidos pela aplicação.
+Registra acessos e operações de nota, incluindo requisições recusadas quando possível. Guarda o resultado HTTP, a identidade do professor quando conhecida e os estados anterior e novo nas alterações. Não deve armazenar senhas, tokens ou outros segredos. Os registros são mantidos por tempo indeterminado e não devem ser atualizados ou removidos pela aplicação.
 
 ## 4. DDL inicial — PostgreSQL
 
@@ -109,16 +95,6 @@ CREATE TABLE matricula (
 
 CREATE INDEX ix_matricula_oferta_status
     ON matricula (oferta_id, status, matricula_id);
-
-CREATE TABLE api_cliente (
-    api_cliente_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    nome VARCHAR(100) NOT NULL,
-    segredo_hash BYTEA NOT NULL UNIQUE,
-    criada_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    revogada_em TIMESTAMPTZ,
-    CONSTRAINT ck_api_cliente_nome_nao_vazio
-        CHECK (length(trim(nome)) > 0)
-);
 
 CREATE TABLE nota (
     nota_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -154,7 +130,6 @@ CREATE INDEX ix_nota_matricula_ativas
 
 CREATE TABLE auditoria (
     auditoria_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    api_cliente_id UUID REFERENCES api_cliente (api_cliente_id),
     nota_id UUID REFERENCES nota (nota_id),
     tipo_evento VARCHAR(30) NOT NULL,
     professor_id VARCHAR(100),
@@ -223,7 +198,7 @@ GROUP BY m.estudante_id, m.oferta_id;
 
 ### Cadastro ou atualização de nota
 
-1. Validar a chave de API e resolver o cliente.
+1. Receber chamadas somente de ambiente controlado, com acesso limitado por rede; no MVP, não validar chave de API.
 2. Obter a identidade do professor por canal autenticado e confiável; não confiar em um identificador arbitrário enviado pelo cliente HTTP.
 3. Iniciar transação e localizar a matrícula ativa pela oferta e pelo estudante.
 4. Inserir ou atualizar a nota. A restrição única parcial protege contra cadastros concorrentes da mesma posição.
@@ -236,12 +211,12 @@ Atualizar `excluida_em` e `excluido_por`, e inserir o evento `EXCLUSAO_LOGICA` n
 
 ### Registro de acesso
 
-Registrar tentativas de acesso, inclusive falhas de autenticação, sem armazenar o segredo apresentado. Para uma chave não reconhecida, `api_cliente_id` e `professor_id` podem ser nulos; o evento ainda registra horário, rota, resultado HTTP e `request_id`, conforme os dados disponíveis.
+Registrar acessos e tentativas recusadas por controles de rede ou validações da aplicação, sem armazenar credenciais ou outros segredos. O evento registra horário, rota, resultado HTTP e `request_id`, além do `professor_id` quando conhecido.
 
 ## 7. Segurança, acesso e manutenção
 
 - A aplicação deve conectar-se ao PostgreSQL com usuário de privilégio mínimo.
-- A chave de API deve ser gerada com entropia criptográfica suficiente, apresentada uma única vez e armazenada apenas em forma de hash seguro; sua rotação e revogação devem ser suportadas.
+- A API não deve ser exposta publicamente sem uma decisão explícita sobre autenticação e controles de acesso; o MVP depende de restrição de rede e ambiente controlado.
 - O acesso ao banco deve usar conexões protegidas e segredos mantidos em cofre apropriado, nunca em logs ou no repositório.
 - A conta da aplicação não deve poder atualizar ou apagar registros de auditoria. Recomenda-se separar as permissões de escrita de auditoria e impor política imutável no banco ou na infraestrutura.
 - Como a retenção é indeterminada, devem ser planejados backup, recuperação, monitoramento de crescimento e arquivamento que não implique remoção dos registros.
@@ -253,6 +228,6 @@ Registrar tentativas de acesso, inclusive falhas de autenticação, sem armazena
 
 - Formato e origem oficial dos identificadores de estudante, oferta, matrícula e professor.
 - Como a projeção local de matrículas será sincronizada e qual latência de atualização é aceitável.
-- Protocolo confiável entre portal e API para transportar a identidade do professor, além da chave de API do cliente.
+- Protocolo confiável entre portal e API para transportar a identidade do professor.
 - Política institucional para corrigir ou reativar nota excluída logicamente.
 - Esquema de auditoria conforme as regras de privacidade, acesso e retenção da instituição.

@@ -4,7 +4,6 @@ left to right direction
 
 actor "Portal do professor" as Portal
 rectangle "API de cadastro de notas" {
-  usecase "Autenticar sistema\npor chave de API" as UCAuth
   usecase "Cadastrar N1 ou N2" as UCCreate
   usecase "Consultar notas e média" as UCRead
   usecase "Atualizar nota" as UCUpdate
@@ -15,15 +14,10 @@ rectangle "API de cadastro de notas" {
   usecase "Registrar acesso e auditoria" as UCAudit
 }
 
-Portal --> UCAuth
 Portal --> UCCreate
 Portal --> UCRead
 Portal --> UCUpdate
 Portal --> UCDelete
-UCCreate .> UCAuth : <<include>>
-UCRead .> UCAuth : <<include>>
-UCUpdate .> UCAuth : <<include>>
-UCDelete .> UCAuth : <<include>>
 UCCreate .> UCEnrollment : <<include>>
 UCCreate .> UCValidation : <<include>>
 UCCreate .> UCAudit : <<include>>
@@ -32,16 +26,11 @@ UCRead .> UCAudit : <<include>>
 UCUpdate .> UCValidation : <<include>>
 UCUpdate .> UCAudit : <<include>>
 UCDelete .> UCAudit : <<include>>
-UCAuth .> UCAudit : <<include>>
 
 note bottom of Portal
+No MVP, a API não valida chave de API.
 O portal autentica o professor e aplica
 as permissões por perfil.
-end note
-
-note bottom of UCAuth
-A chave autentica o portal como consumidor.
-Não substitui a identidade do professor.
 end note
 @enduml
 
@@ -142,28 +131,20 @@ database "Base acadêmica" as DB
 
 Professor -> Portal: Informa estudante, oferta,\nposição (N1 ou N2) e valor
 Portal -> Portal: Autentica professor e verifica perfil
-Portal -> API: POST /ofertas/{ofertaId}/notas\nX-API-Key + identidade do professor
-API -> API: Valida chave de API
+Portal -> API: POST /ofertas/{ofertaId}/notas\nidentidade do professor em contexto confiável
+API -> DB: Registra acesso à API
+API -> DB: Consulta oferta e matrícula
+DB --> API: Dados da oferta e matrícula
+API -> API: Valida matrícula, posição e valor
 
-alt Chave ausente ou inválida
-  API -> DB: Registra tentativa de acesso
-  API --> Portal: 401 Unauthorized
-  Portal --> Professor: Informa falha de acesso
-else Chave válida
-  API -> DB: Registra acesso à API
-  API -> DB: Consulta oferta e matrícula
-  DB --> API: Dados da oferta e matrícula
-  API -> API: Valida matrícula, posição e valor
-
-  alt Dados inválidos ou nota duplicada
-    API -> API: Associa resultado à auditoria do acesso
-    API --> Portal: 4xx com código e mensagem
-    Portal --> Professor: Exibe erro
-  else Dados válidos
-    API -> DB: Grava nota e evento de auditoria\nna mesma transação
-    DB --> API: Nota persistida
-    API --> Portal: 201 Created + nota
-    Portal --> Professor: Confirma cadastro
-  end
+alt Dados inválidos ou nota duplicada
+  API -> API: Associa resultado à auditoria do acesso
+  API --> Portal: 4xx com código e mensagem
+  Portal --> Professor: Exibe erro
+else Dados válidos
+  API -> DB: Grava nota e evento de auditoria\nna mesma transação
+  DB --> API: Nota persistida
+  API --> Portal: 201 Created + nota
+  Portal --> Professor: Confirma cadastro
 end
 @enduml

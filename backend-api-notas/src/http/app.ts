@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
-import type { AccessAuditor, LocalSessionService, NoteUseCases } from '../application/use-cases.js'
+import type { AccessAuditor, NoteUseCases } from '../application/use-cases.js'
 import { config } from '../config.js'
 import { ApplicationError } from '../domain/errors.js'
 import type { ApiRequest } from './request-context.js'
@@ -10,7 +10,6 @@ import { createRoutes } from './routes.js'
 
 export function createApp(
   notes: NoteUseCases,
-  sessions: LocalSessionService,
   auditor: AccessAuditor,
 ) {
   const app = express()
@@ -37,7 +36,7 @@ export function createApp(
       response.setHeader('Access-Control-Allow-Origin', origin)
       response.setHeader('Vary', 'Origin')
       response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
-      response.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Request-Id')
+      response.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Request-Id')
       response.setHeader('Access-Control-Max-Age', '600')
     }
     if (request.method === 'OPTIONS') {
@@ -90,7 +89,7 @@ export function createApp(
     }
   })
 
-  app.use('/api/v1', createRoutes(notes, sessions))
+  app.use('/api/v1', createRoutes(notes))
   app.use((_request, response) => {
     response.status(404).json({
       codigo: 'ROTA_NAO_ENCONTRADA',

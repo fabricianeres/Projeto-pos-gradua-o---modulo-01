@@ -1,14 +1,3 @@
-export interface SessionRequest {
-  professorId: string
-  senha: string
-}
-
-export interface SessionResponse {
-  token: string
-  professorId: string
-  expiresAt?: string
-}
-
 export interface ApiErrorDetail {
   campo?: string
   mensagem: string

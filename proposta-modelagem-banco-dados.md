@@ -1,20 +1,21 @@
-# Proposta de Modelagem do Banco de Dados
+# Modelagem Implementada do Banco de Dados
 
 **Sistema:** API de cadastro de notas  
-**Versão:** 1.0  
-**Banco de dados definido:** PostgreSQL
+**Versão:** 2.0
+**Banco de dados:** PostgreSQL
 
-## 1. Objetivo e decisões da proposta
+## 1. Escopo e decisões implementadas
 
-Esta proposta modela o armazenamento das notas, das matrículas necessárias para validá-las e dos registros de auditoria.
+Este documento descreve o esquema definido pela migration [`001_initial_schema.sql`](./backend-api-notas/migrations/001_initial_schema.sql) e seu uso pela API.
 
-- No MVP, o banco da API é responsável por notas e auditoria; não há armazenamento de chaves de API.
+- O banco da API armazena notas, a projeção local de matrículas e auditoria. As rotas não exigem autenticação.
 - Estudantes, disciplinas e ofertas são cadastrados em sistemas acadêmicos existentes. A API não passa a ser proprietária desses cadastros.
-- Para validar matrícula e aplicar chaves estrangeiras sem depender de uma transação distribuída, a proposta mantém uma projeção local de matrículas. Essa projeção é sincronizada a partir do sistema acadêmico e somente leitura para a API. Se os sistemas compartilharem o mesmo banco, ela pode ser substituída por referências às tabelas acadêmicas oficiais.
-- O identificador do professor vem do contexto autenticado do portal e é armazenado como identificador externo; a API não armazena a senha nem cria cadastro de professores.
+- `matricula` é uma projeção local do vínculo entre estudante e oferta. A carga/sincronização é feita fora das rotas de notas; a API a consulta para validar matrícula ativa.
+- A migration inicial também cria `professor_teste`, resíduo do fluxo de autenticação que foi removido. A tabela não é mais consultada pela API; instalações existentes podem mantê-la sem uso.
+- UUIDs são gerados pela aplicação e enviados nas inserções; as colunas UUID não têm valor padrão no banco.
 - Notas são excluídas logicamente. Uma nova nota pode ocupar a posição N1 ou N2 se a nota anterior daquela posição tiver sido excluída logicamente; o registro anterior e sua auditoria são preservados.
 - A média não é armazenada: é um valor derivado das duas notas ativas, arredondado para uma casa decimal.
-- Os exemplos de identificadores externos usam `VARCHAR(100)` para não impor o formato dos sistemas acadêmicos.
+- Identificadores externos usam `VARCHAR(100)` para não impor o formato dos sistemas acadêmicos.
 
 ## 2. Diagrama entidade-relacionamento
 
@@ -58,33 +59,45 @@ erDiagram
         jsonb estado_novo
         timestamptz ocorrido_em
     }
+
+    PROFESSOR_TESTE {
+        varchar professor_id PK
+        varchar senha_hash
+        timestamptz criada_em
+    }
 ```
 
-## 3. Entidades e regras
+`professor_teste` aparece isolada no diagrama porque a migration ainda a cria por compatibilidade com o esquema inicial; não há relações FK e o código atual não lê nem grava nela. `criado_por`/`atualizado_por`/`excluido_por` e `auditoria.professor_id` são identificadores textuais, não chaves estrangeiras.
+
+## 3. Entidades, restrições e índices
 
 ### `matricula`
 
-Projeção local e somente leitura do vínculo entre um estudante e uma oferta. A combinação `(estudante_id, oferta_id)` deve ser única. A API só permite registrar nota quando a matrícula estiver ativa. A sincronização deve atualizar o estado e o horário de sincronização sem criar matrículas pelo endpoint de notas.
+Projeção local do vínculo entre um estudante e uma oferta. `matricula_id` é chave primária UUID; `(estudante_id, oferta_id)` é único. `status` é `VARCHAR(20)` sem `CHECK` de valores permitidos; a criação de notas exige `status = 'ATIVA'`. `sincronizada_em` tem padrão `CURRENT_TIMESTAMP`. O índice `ix_matricula_oferta_status` atende à consulta por oferta, estado e identificador.
 
 ### `nota`
 
-Armazena N1 ou N2 associada à matrícula. O valor fica entre 0 e 10, com no máximo uma casa decimal. Uma restrição única parcial impede mais de uma nota ativa na mesma posição da matrícula; uma nota logicamente excluída não participa das consultas normais nem da média.
+Armazena N1 ou N2 associada a uma matrícula por FK. As restrições garantem posição 1 ou 2, valor entre 0 e 10 com até uma casa decimal e coerência entre cada par de campos de atualização/exclusão (data e autor). Um índice único parcial impede mais de uma nota não excluída por posição e matrícula. Os índices parciais `ix_nota_matricula_ativas` e `ix_nota_matricula_paginacao` apoiam leituras de notas ativas.
 
-`criado_por`, `atualizado_por` e `excluido_por` guardam o identificador do professor fornecido em contexto confiável pelo portal. A trilha completa de alterações fica em `auditoria`.
+`criado_por`, `atualizado_por` e `excluido_por` guardam o ator técnico fixo `api-local` nas mutações feitas pela API, sem FK. Não representam um professor autenticado. Datas de criação/atualização/exclusão usam `TIMESTAMPTZ`; a criação e as alterações são registradas na tabela `auditoria`.
 
 ### `auditoria`
 
-Registra acessos e operações de nota, incluindo requisições recusadas quando possível. Guarda o resultado HTTP, a identidade do professor quando conhecida e os estados anterior e novo nas alterações. Não deve armazenar senhas, tokens ou outros segredos. Os registros são mantidos por tempo indeterminado e não devem ser atualizados ou removidos pela aplicação.
+Registra eventos `ACESSO`, `CRIACAO`, `ATUALIZACAO` e `EXCLUSAO_LOGICA`. `nota_id` é uma FK anulável para `nota`; os demais dados de requisição e os estados JSON anterior/novo também podem ser nulos, conforme o tipo de evento. Um `CHECK` restringe os tipos de evento e outro restringe `status_http` ao intervalo de 100 a 599 quando informado. Índices ordenam por data e por nota/data. Um trigger `BEFORE UPDATE OR DELETE` chama `impedir_alteracao_auditoria()` e rejeita alterações e remoções; inserções continuam permitidas. Senhas, tokens e segredos não são registrados.
 
-## 4. DDL inicial — PostgreSQL
+As auditorias de mutação de nota são inseridas na mesma transação da alteração e registram `api-local` em `professor_id`. Eventos de acesso deixam `professor_id` nulo e são tentados depois da resposta HTTP; falhas são reportadas no log do servidor com `requestId`, portanto o registro de acesso não faz parte da transação da operação de nota.
 
-O DDL é uma base para discussão e deve ser adaptado ao esquema de integração do sistema acadêmico e às políticas operacionais da instituição.
+### `professor_teste`
+
+Tabela legada criada pela migration inicial. `professor_id` é chave primária, `senha_hash` guarda o hash que era usado pelo login de teste e `criada_em` tem padrão `CURRENT_TIMESTAMP`. Um `CHECK` rejeita identificador vazio ou composto somente por espaços. O fluxo de login foi removido e a API não usa esta tabela; credenciais antigas podem ser eliminadas manualmente após avaliar o banco local.
+
+## 4. DDL implementado — PostgreSQL
+
+O DDL abaixo corresponde à migration aplicada. A migration usa `IF NOT EXISTS` para tabelas/índices, substitui a função do trigger e recria o trigger. Não depende da extensão `pgcrypto`: os UUIDs são fornecidos pela aplicação.
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-CREATE TABLE matricula (
-    matricula_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS matricula (
+    matricula_id UUID PRIMARY KEY,
     estudante_id VARCHAR(100) NOT NULL,
     oferta_id VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL,
@@ -93,11 +106,19 @@ CREATE TABLE matricula (
         UNIQUE (estudante_id, oferta_id)
 );
 
-CREATE INDEX ix_matricula_oferta_status
+CREATE INDEX IF NOT EXISTS ix_matricula_oferta_status
     ON matricula (oferta_id, status, matricula_id);
 
-CREATE TABLE nota (
-    nota_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS professor_teste (
+    professor_id VARCHAR(100) PRIMARY KEY,
+    senha_hash VARCHAR(250) NOT NULL,
+    criada_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_professor_teste_id_nao_vazio
+        CHECK (length(trim(professor_id)) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS nota (
+    nota_id UUID PRIMARY KEY,
     matricula_id UUID NOT NULL REFERENCES matricula (matricula_id),
     posicao SMALLINT NOT NULL,
     valor NUMERIC NOT NULL,
@@ -108,28 +129,29 @@ CREATE TABLE nota (
     atualizada_em TIMESTAMPTZ,
     excluido_por VARCHAR(100),
     excluida_em TIMESTAMPTZ,
-    CONSTRAINT ck_nota_posicao
-        CHECK (posicao IN (1, 2)),
-    CONSTRAINT ck_nota_valor_intervalo
-        CHECK (valor >= 0 AND valor <= 10),
-    CONSTRAINT ck_nota_uma_casa_decimal
-        CHECK (valor = trunc(valor, 1)),
+    CONSTRAINT ck_nota_posicao CHECK (posicao IN (1, 2)),
+    CONSTRAINT ck_nota_valor_intervalo CHECK (valor >= 0 AND valor <= 10),
+    CONSTRAINT ck_nota_uma_casa_decimal CHECK (valor = trunc(valor, 1)),
     CONSTRAINT ck_nota_atualizacao_coerente
         CHECK ((atualizada_em IS NULL) = (atualizado_por IS NULL)),
     CONSTRAINT ck_nota_exclusao_coerente
         CHECK ((excluida_em IS NULL) = (excluido_por IS NULL))
 );
 
-CREATE UNIQUE INDEX uq_nota_ativa_matricula_posicao
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nota_ativa_matricula_posicao
     ON nota (matricula_id, posicao)
     WHERE excluida_em IS NULL;
 
-CREATE INDEX ix_nota_matricula_ativas
+CREATE INDEX IF NOT EXISTS ix_nota_matricula_ativas
     ON nota (matricula_id, posicao)
     WHERE excluida_em IS NULL;
 
-CREATE TABLE auditoria (
-    auditoria_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE INDEX IF NOT EXISTS ix_nota_matricula_paginacao
+    ON nota (matricula_id, nota_id)
+    WHERE excluida_em IS NULL;
+
+CREATE TABLE IF NOT EXISTS auditoria (
+    auditoria_id UUID PRIMARY KEY,
     nota_id UUID REFERENCES nota (nota_id),
     tipo_evento VARCHAR(30) NOT NULL,
     professor_id VARCHAR(100),
@@ -140,27 +162,33 @@ CREATE TABLE auditoria (
     estado_anterior JSONB,
     estado_novo JSONB,
     ocorrido_em TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT ck_auditoria_tipo_evento
-        CHECK (tipo_evento IN (
-            'ACESSO',
-            'CRIACAO',
-            'ATUALIZACAO',
-            'EXCLUSAO_LOGICA'
-        )),
+    CONSTRAINT ck_auditoria_tipo_evento CHECK (
+        tipo_evento IN ('ACESSO', 'CRIACAO', 'ATUALIZACAO', 'EXCLUSAO_LOGICA')
+    ),
     CONSTRAINT ck_auditoria_status_http
         CHECK (status_http IS NULL OR status_http BETWEEN 100 AND 599)
 );
 
-CREATE INDEX ix_auditoria_ocorrido_em
+CREATE INDEX IF NOT EXISTS ix_auditoria_ocorrido_em
     ON auditoria (ocorrido_em DESC);
 
-CREATE INDEX ix_auditoria_nota_ocorrido_em
+CREATE INDEX IF NOT EXISTS ix_auditoria_nota_ocorrido_em
     ON auditoria (nota_id, ocorrido_em DESC)
     WHERE nota_id IS NOT NULL;
 
-CREATE INDEX ix_nota_matricula_paginacao
-    ON nota (matricula_id, nota_id)
-    WHERE excluida_em IS NULL;
+CREATE OR REPLACE FUNCTION impedir_alteracao_auditoria()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'Registros de auditoria sao imutaveis';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_auditoria_imutavel ON auditoria;
+CREATE TRIGGER trg_auditoria_imutavel
+    BEFORE UPDATE OR DELETE ON auditoria
+    FOR EACH ROW EXECUTE FUNCTION impedir_alteracao_auditoria();
 ```
 
 ## 5. Consulta de notas e média
@@ -194,40 +222,41 @@ WHERE m.estudante_id = :estudante_id
 GROUP BY m.estudante_id, m.oferta_id;
 ```
 
-## 6. Fluxos transacionais recomendados
+## 6. Fluxos implementados
 
-### Cadastro ou atualização de nota
+### Cadastro de nota
 
-1. Receber chamadas somente de ambiente controlado, com acesso limitado por rede; no MVP, não validar chave de API.
-2. Obter a identidade do professor por canal autenticado e confiável; não confiar em um identificador arbitrário enviado pelo cliente HTTP.
-3. Iniciar transação e localizar a matrícula ativa pela oferta e pelo estudante.
-4. Inserir ou atualizar a nota. A restrição única parcial protege contra cadastros concorrentes da mesma posição.
-5. Inserir o evento de auditoria na mesma transação da alteração da nota.
-6. Confirmar a transação. Em conflito de posição já ocupada, retornar conflito sem substituir o registro.
+1. A API procura a matrícula por oferta e estudante com `status = 'ATIVA'`.
+2. Em uma transação, insere a nota e seu evento `CRIACAO` em `auditoria`. A restrição única parcial impede duplicidade concorrente da posição ativa.
+3. Se a matrícula não estiver ativa, a API rejeita o cadastro; se a posição já estiver ocupada, retorna conflito sem substituir a nota existente.
+
+As mutações da API gravam o ator técnico `api-local` em `criado_por` e na auditoria; esse valor não identifica uma pessoa.
+
+### Atualização de nota
+
+Em uma transação, a API bloqueia a nota ativa, atualiza valor e/ou observação e preenche `atualizado_por`/`atualizada_em`; o evento `ATUALIZACAO`, com estados anterior e novo, é inserido atomicamente.
 
 ### Exclusão lógica
 
-Atualizar `excluida_em` e `excluido_por`, e inserir o evento `EXCLUSAO_LOGICA` na mesma transação. As consultas regulares e o cálculo da média devem filtrar `excluida_em IS NULL`.
+Em uma transação, a API bloqueia a nota ativa, preenche `excluida_em`/`excluido_por` e insere o evento `EXCLUSAO_LOGICA`. Consultas e média excluem registros com `excluida_em IS NOT NULL`.
 
 ### Registro de acesso
 
-Registrar acessos e tentativas recusadas por controles de rede ou validações da aplicação, sem armazenar credenciais ou outros segredos. O evento registra horário, rota, resultado HTTP e `request_id`, além do `professor_id` quando conhecido.
+Após o término das requisições que passam pelos controles de host e CORS, a API tenta inserir um evento `ACESSO` com método, caminho, status, `request_id` e professor quando conhecido. O resultado dessa gravação não altera a resposta enviada ao cliente; falhas são registradas no log do servidor.
 
 ## 7. Segurança, acesso e manutenção
 
 - A aplicação deve conectar-se ao PostgreSQL com usuário de privilégio mínimo.
-- A API não deve ser exposta publicamente sem uma decisão explícita sobre autenticação e controles de acesso; o MVP depende de restrição de rede e ambiente controlado.
+- As rotas não exigem autenticação. A API deve permanecer restrita a loopback e a dados locais de teste; não deve ser exposta publicamente.
 - O acesso ao banco deve usar conexões protegidas e segredos mantidos em cofre apropriado, nunca em logs ou no repositório.
-- A conta da aplicação não deve poder atualizar ou apagar registros de auditoria. Recomenda-se separar as permissões de escrita de auditoria e impor política imutável no banco ou na infraestrutura.
+- O trigger do banco impede `UPDATE` e `DELETE` em `auditoria`; as inserções feitas pela aplicação permanecem permitidas.
 - Como a retenção é indeterminada, devem ser planejados backup, recuperação, monitoramento de crescimento e arquivamento que não implique remoção dos registros.
-- A lista de 10 itens por página deve ser aplicada pela API com ordenação estável, preferencialmente por chave primária ou cursor.
+- A API aceita paginação com até 10 itens por página e ordenação estável.
 - O índice `ix_matricula_oferta_status` atende à busca dos estudantes matriculados em uma oferta; o índice parcial das notas atende à leitura das notas ativas por matrícula.
 - A média deve ser calculada a partir das notas ativas para evitar inconsistência entre valores armazenados e a regra institucional.
 
-## 8. Pontos a confirmar antes da implementação
+## 8. Limites conhecidos do esquema
 
-- Formato e origem oficial dos identificadores de estudante, oferta, matrícula e professor.
-- Como a projeção local de matrículas será sincronizada e qual latência de atualização é aceitável.
-- Protocolo confiável entre portal e API para transportar a identidade do professor.
-- Política institucional para corrigir ou reativar nota excluída logicamente.
-- Esquema de auditoria conforme as regras de privacidade, acesso e retenção da instituição.
+- A migration não define um valor padrão UUID no banco nem aplica `CHECK` para os valores permitidos em `matricula.status`; a aplicação e as rotinas que carregam a projeção devem fornecer UUIDs e respeitar o estado `ATIVA`.
+- A tabela `professor_teste` é um resíduo não utilizado da migration inicial; o código atual não autentica usuários.
+- A migration não impõe prazo de retenção de auditoria; backup, controle de acesso e políticas de retenção devem seguir as regras institucionais.

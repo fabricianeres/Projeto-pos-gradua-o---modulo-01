@@ -1,22 +1,16 @@
 import { config } from './config.js'
-import { AccessAuditor, LocalSessionService, NoteUseCases } from './application/use-cases.js'
+import { AccessAuditor, NoteUseCases } from './application/use-cases.js'
 import { createApp } from './http/app.js'
 import {
   PostgresAccessAuditRepository,
   PostgresNoteRepository,
-  PostgresProfessorCredentialRepository,
 } from './infrastructure/postgres-repositories.js'
 import { pool } from './infrastructure/database.js'
 
 async function main(): Promise<void> {
   await pool.query('SELECT 1')
-  const sessionService = new LocalSessionService(
-    new PostgresProfessorCredentialRepository(),
-    config.sessionTtlMinutes,
-  )
   const app = createApp(
     new NoteUseCases(new PostgresNoteRepository()),
-    sessionService,
     new AccessAuditor(new PostgresAccessAuditRepository()),
   )
 

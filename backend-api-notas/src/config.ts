@@ -40,7 +40,6 @@ export const config = {
   host,
   port: positiveInteger(process.env.PORT, 3000, 'PORT'),
   databaseUrl,
-  sessionTtlMinutes: positiveInteger(process.env.SESSION_TTL_MINUTES, 30, 'SESSION_TTL_MINUTES'),
   databasePoolSize: positiveInteger(process.env.DATABASE_POOL_SIZE, 10, 'DATABASE_POOL_SIZE'),
   frontendOrigins: new Set(
     (process.env.FRONTEND_ORIGINS ?? 'http://127.0.0.1:5173,http://localhost:5173')

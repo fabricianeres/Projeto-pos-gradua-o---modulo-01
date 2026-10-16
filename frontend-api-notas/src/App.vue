@@ -5,18 +5,12 @@ import type {
   ApiProblem,
   ApiResult,
   CreateNoteRequest,
-  SessionResponse,
   UpdateNoteRequest,
 } from './types'
 
 type Operation = 'create' | 'get' | 'offer-list' | 'student-list' | 'update' | 'delete'
 
-const session = ref<SessionResponse | null>(null)
-const professorIdInput = ref('')
-const passwordInput = ref('')
 const busy = ref(false)
-const loginError = ref('')
-const logoutError = ref('')
 const operationError = ref<ApiProblem | null>(null)
 const result = ref<ApiResult | null>(null)
 const selectedOperation = ref<Operation>('create')
@@ -69,46 +63,6 @@ function reportError(error: unknown): ApiProblem {
   return new Error('Ocorreu um erro inesperado.') as ApiProblem
 }
 
-async function login(): Promise<void> {
-  loginError.value = ''
-  logoutError.value = ''
-  busy.value = true
-
-  try {
-    const response = await api.login({
-      professorId: professorIdInput.value.trim(),
-      senha: passwordInput.value,
-    })
-    if (!response.body?.token || !response.body.professorId) {
-      throw new Error('A API não retornou token e professorId no formato esperado.')
-    }
-
-    session.value = response.body
-    professorIdInput.value = response.body.professorId
-    passwordInput.value = ''
-  } catch (error) {
-    loginError.value = reportError(error).message
-  } finally {
-    busy.value = false
-  }
-}
-
-async function logout(): Promise<void> {
-  if (!session.value) return
-  busy.value = true
-
-  try {
-    await api.logout(session.value.token)
-  } catch (error) {
-    logoutError.value = `A sessão foi removida desta página, mas a API não confirmou o encerramento: ${reportError(error).message}`
-  } finally {
-    session.value = null
-    result.value = null
-    operationError.value = null
-    busy.value = false
-  }
-}
-
 function selectOperation(operation: Operation): void {
   selectedOperation.value = operation
   operationError.value = null
@@ -131,7 +85,6 @@ function gradeValue(): number {
 }
 
 async function runOperation(): Promise<void> {
-  if (!session.value) return
   busy.value = true
   operationError.value = null
   result.value = null
@@ -150,7 +103,6 @@ async function runOperation(): Promise<void> {
         response = await api.execute(
           `/ofertas/${requireValue(offerId.value, 'oferta')}/notas`,
           'POST',
-          session.value.token,
           payload,
         )
         break
@@ -159,21 +111,18 @@ async function runOperation(): Promise<void> {
         response = await api.execute(
           `/notas/${requireValue(noteId.value, 'identificador da nota')}`,
           'GET',
-          session.value.token,
         )
         break
       case 'offer-list':
         response = await api.execute(
           `/ofertas/${requireValue(offerId.value, 'oferta')}/notas?pagina=${page.value}&tamanhoPagina=${pageSize}`,
           'GET',
-          session.value.token,
         )
         break
       case 'student-list':
         response = await api.execute(
           `/estudantes/${requireValue(studentId.value, 'estudante')}/notas?ofertaId=${requireValue(offerId.value, 'oferta')}&pagina=${page.value}&tamanhoPagina=${pageSize}`,
           'GET',
-          session.value.token,
         )
         break
       case 'update': {
@@ -186,7 +135,6 @@ async function runOperation(): Promise<void> {
         response = await api.execute(
           `/notas/${requireValue(noteId.value, 'identificador da nota')}`,
           'PATCH',
-          session.value.token,
           payload,
         )
         break
@@ -194,18 +142,13 @@ async function runOperation(): Promise<void> {
       case 'delete': {
         const targetId = requireValue(noteId.value, 'identificador da nota')
         if (!window.confirm('Confirma a exclusão lógica desta nota?')) return
-        response = await api.execute(`/notas/${targetId}`, 'DELETE', session.value.token)
+        response = await api.execute(`/notas/${targetId}`, 'DELETE')
         break
       }
     }
     result.value = response
   } catch (error) {
     operationError.value = reportError(error)
-    if (operationError.value.status === 401) {
-      session.value = null
-      loginError.value = 'Sua sessão expirou ou não é válida. Entre novamente.'
-      operationError.value = null
-    }
   } finally {
     busy.value = false
   }
@@ -233,49 +176,10 @@ async function changePage(direction: -1 | 1): Promise<void> {
     <section class="intro">
       <p class="eyebrow">FERRAMENTA DE DESENVOLVIMENTO</p>
       <h1>Teste a API de notas</h1>
-      <p class="intro-copy">Execute operações de cadastro e consulta usando a API local. O login identifica o responsável na auditoria; não concede permissões acadêmicas.</p>
+      <p class="intro-copy">Execute operações de cadastro e consulta usando a API local. As requisições não exigem login; mantenha a ferramenta e a API restritas ao ambiente local.</p>
     </section>
 
-    <section v-if="!session" class="panel login-panel" aria-labelledby="login-title">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">SESSÃO DE TESTE</p>
-          <h2 id="login-title">Identifique-se para começar</h2>
-        </div>
-        <span class="lock-icon" aria-hidden="true">↗</span>
-      </div>
-      <p class="muted">Use credenciais locais de teste. Não informe sua senha institucional.</p>
-      <form class="form-grid" @submit.prevent="login">
-        <label class="field">
-          <span>Identificador do professor</span>
-          <input v-model="professorIdInput" autocomplete="username" required placeholder="Ex.: prof-123" />
-        </label>
-        <label class="field">
-          <span>Senha de teste</span>
-          <input v-model="passwordInput" type="password" autocomplete="current-password" required />
-        </label>
-        <p v-if="loginError" class="error-message form-wide" role="alert">{{ loginError }}</p>
-        <div class="form-actions form-wide">
-          <span class="helper-text">A sessão fica apenas na memória desta página.</span>
-          <button class="button primary" type="submit" :disabled="busy">
-            {{ busy ? 'Conectando…' : 'Entrar na sessão local' }}
-          </button>
-        </div>
-      </form>
-      <div class="notice"><strong>Acesso local:</strong> esta ferramenta chama somente uma API em localhost e não deve ser publicada na rede.</div>
-      <p v-if="logoutError" class="error-message logout-error" role="alert">{{ logoutError }}</p>
-    </section>
-
-    <template v-else>
-      <section class="session-bar" aria-label="Sessão ativa">
-        <div class="session-person">
-          <span class="avatar" aria-hidden="true">{{ session.professorId.slice(0, 1).toUpperCase() }}</span>
-          <span><strong>{{ session.professorId }}</strong><small>sessão local para auditoria</small></span>
-        </div>
-        <button class="button subtle" type="button" :disabled="busy" @click="logout">Encerrar sessão</button>
-      </section>
-
-      <section class="workspace">
+    <section class="workspace">
         <nav class="operation-nav" aria-label="Operações da API">
           <p class="nav-label">OPERAÇÕES</p>
           <button :class="{ active: selectedOperation === 'create' }" @click="selectOperation('create')"><span class="nav-icon">＋</span>Cadastrar nota</button>
@@ -399,8 +303,7 @@ async function changePage(direction: -1 | 1): Promise<void> {
             </div>
           </section>
         </section>
-      </section>
-    </template>
+    </section>
 
     <footer class="footer">
       <span>API de cadastro de notas · ferramenta de desenvolvimento</span>

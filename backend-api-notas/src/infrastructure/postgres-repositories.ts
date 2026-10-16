@@ -6,13 +6,13 @@ import type {
   NotePage,
   NoteRecord,
   NoteRepository,
-  ProfessorCredentialRepository,
   StudentGrades,
 } from '../application/ports.js'
 import type { CreateNoteInput, UpdateNoteInput } from '../domain/note.js'
 import { conflict, notFound, unprocessable } from '../domain/errors.js'
 import { inTransaction, query } from './database.js'
-import { verifyTestPassword } from '../application/use-cases.js'
+
+const localApiActor = 'api-local'
 
 interface NoteRow extends QueryResultRow {
   nota_id: string
@@ -84,7 +84,7 @@ async function writeMutationAudit(
 }
 
 export class PostgresNoteRepository implements NoteRepository {
-  async create(ofertaId: string, input: CreateNoteInput, professorId: string): Promise<NoteRecord> {
+  async create(ofertaId: string, input: CreateNoteInput): Promise<NoteRecord> {
     try {
       return await inTransaction(async (client) => {
         const enrollment = await client.query<{ matricula_id: string }>(
@@ -104,7 +104,7 @@ export class PostgresNoteRepository implements NoteRepository {
              (nota_id, matricula_id, posicao, valor, observacao, criado_por, criada_em)
            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
            RETURNING nota_id, posicao, valor, observacao, criada_em, atualizada_em`,
-          [notaId, enrollment.rows[0]!.matricula_id, input.numeroNota, input.valor, input.observacao ?? null, professorId],
+          [notaId, enrollment.rows[0]!.matricula_id, input.numeroNota, input.valor, input.observacao ?? null, localApiActor],
         )
         const row = inserted.rows[0]!
         const result = await client.query<NoteRow>(
@@ -119,7 +119,7 @@ export class PostgresNoteRepository implements NoteRepository {
         await writeMutationAudit(client, {
           notaId,
           event: 'CRIACAO',
-          professorId,
+          professorId: localApiActor,
           before: null,
           after: note,
         })
@@ -240,7 +240,7 @@ export class PostgresNoteRepository implements NoteRepository {
     }
   }
 
-  async update(notaId: string, input: UpdateNoteInput, professorId: string): Promise<NoteRecord> {
+  async update(notaId: string, input: UpdateNoteInput): Promise<NoteRecord> {
     return inTransaction(async (client) => {
       const currentResult = await client.query<NoteRow>(
         `SELECT n.nota_id, m.oferta_id, m.estudante_id, n.posicao, n.valor,
@@ -261,7 +261,7 @@ export class PostgresNoteRepository implements NoteRepository {
                 atualizada_em = CURRENT_TIMESTAMP
           WHERE nota_id = $1
         RETURNING nota_id, posicao, valor, observacao, criada_em, atualizada_em`,
-        [notaId, input.valor ?? null, input.observacao !== undefined, input.observacao ?? null, professorId],
+        [notaId, input.valor ?? null, input.observacao !== undefined, input.observacao ?? null, localApiActor],
       )
       const output = await client.query<NoteRow>(
         `SELECT n.nota_id, m.oferta_id, m.estudante_id, n.posicao, n.valor,
@@ -274,7 +274,7 @@ export class PostgresNoteRepository implements NoteRepository {
       await writeMutationAudit(client, {
         notaId,
         event: 'ATUALIZACAO',
-        professorId,
+        professorId: localApiActor,
         before: current,
         after: note,
       })
@@ -282,7 +282,7 @@ export class PostgresNoteRepository implements NoteRepository {
     })
   }
 
-  async softDelete(notaId: string, professorId: string): Promise<void> {
+  async softDelete(notaId: string): Promise<void> {
     await inTransaction(async (client) => {
       const currentResult = await client.query<NoteRow>(
         `SELECT n.nota_id, m.oferta_id, m.estudante_id, n.posicao, n.valor,
@@ -299,12 +299,12 @@ export class PostgresNoteRepository implements NoteRepository {
         `UPDATE nota
             SET excluido_por = $2, excluida_em = CURRENT_TIMESTAMP
           WHERE nota_id = $1`,
-        [notaId, professorId],
+        [notaId, localApiActor],
       )
       await writeMutationAudit(client, {
         notaId,
         event: 'EXCLUSAO_LOGICA',
-        professorId,
+        professorId: localApiActor,
         before,
         after: { ...before, excluida: true },
       })
@@ -314,17 +314,6 @@ export class PostgresNoteRepository implements NoteRepository {
 
 function isPgError(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code
-}
-
-export class PostgresProfessorCredentialRepository implements ProfessorCredentialRepository {
-  async verify(professorId: string, password: string): Promise<boolean> {
-    const result = await query<{ senha_hash: string }>(
-      'SELECT senha_hash FROM professor_teste WHERE professor_id = $1',
-      [professorId],
-    )
-    if (!result.rowCount) return false
-    return verifyTestPassword(password, result.rows[0]!.senha_hash)
-  }
 }
 
 export class PostgresAccessAuditRepository implements AccessAuditRepository {

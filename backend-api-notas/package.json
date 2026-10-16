@@ -12,9 +12,8 @@
     "start": "node dist/src/index.js",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed-demo-data.ts",
-    "professor:create": "tsx scripts/create-test-professor.ts",
     "enrollment:seed": "tsx scripts/seed-enrollment.ts",
-    "test": "npm run build && node --test dist/src/tests/domain.test.js dist/src/tests/session.test.js"
+    "test": "npm run build && node --test dist/src/tests/domain.test.js dist/src/tests/routes.test.js"
   },
   "dependencies": {
     "express": "^4.21.2",

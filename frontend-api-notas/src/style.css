@@ -40,17 +40,14 @@ h1 { margin-bottom: 9px; font-size: clamp(28px, 4vw, 36px); line-height: 1.2; }
 .intro-copy { max-width: 660px; margin: 0; color: #687792; font-size: 14px; line-height: 1.7; }
 
 .panel { border: 1px solid #e4e9f2; border-radius: 14px; background: #fff; box-shadow: 0 8px 24px #1c31500a; }
-.login-panel { max-width: 720px; padding: 28px; margin: 0 auto 64px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .panel-heading h2 { margin-bottom: 0; font-size: 20px; }
-.lock-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #315bd1; background: #eef3ff; font-size: 20px; }
-.muted { margin: 12px 0 22px; color: #76839a; font-size: 13px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 16px; }
 .field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: #384762; font-size: 12px; font-weight: 600; }
 .field b { color: #d2595e; }
 .field small { color: #8792a6; font-size: 11px; font-weight: 400; line-height: 1.5; }
 .field > span small { display: inline; }
-.field-full, .form-wide { grid-column: 1 / -1; }
+.field-full { grid-column: 1 / -1; }
 .field input, .field select, .field textarea { width: 100%; min-height: 42px; border: 1px solid #dce3ee; border-radius: 8px; padding: 10px 12px; outline: 0; color: #24324b; background: #fff; font-size: 13px; font-weight: 400; transition: border-color .15s, box-shadow .15s; }
 .field textarea { resize: vertical; }
 .field input::placeholder, .field textarea::placeholder { color: #a4adbc; }
@@ -66,15 +63,6 @@ h1 { margin-bottom: 9px; font-size: clamp(28px, 4vw, 36px); line-height: 1.2; }
 .notice { margin-top: 20px; border-radius: 8px; padding: 11px 13px; color: #596987; background: #f3f6fc; font-size: 11px; line-height: 1.6; }
 .notice strong { color: #344665; }
 .notice.warning { margin: 0; color: #805d22; background: #fff8e9; }
-.error-message { margin: 0; color: #b13e45; font-size: 12px; }
-
-.session-bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 18px; border: 1px solid #e5eaf2; border-radius: 12px; padding: 11px 14px; background: #fff; }
-.session-person { display: flex; align-items: center; gap: 10px; }
-.avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #315bd1; background: #edf2ff; font: 700 14px 'Segoe UI', Arial, sans-serif; }
-.session-person strong, .session-person small { display: block; }
-.session-person strong { color: #2e3d57; font-size: 12px; }
-.session-person small { margin-top: 3px; color: #8a96aa; font-size: 10px; }
-
 .workspace { display: grid; grid-template-columns: 205px minmax(0, 1fr); gap: 18px; align-items: start; }
 .operation-nav { display: flex; flex-direction: column; gap: 4px; border: 1px solid #e4e9f2; border-radius: 12px; padding: 12px 9px; background: #fff; }
 .nav-label { margin: 6px 9px 8px; color: #98a2b4; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
@@ -120,10 +108,9 @@ h1 { margin-bottom: 9px; font-size: clamp(28px, 4vw, 36px); line-height: 1.2; }
 @media (max-width: 520px) {
   .form-grid { grid-template-columns: 1fr; }
   .field-full, .form-wide { grid-column: auto; }
-  .login-panel, .operation-panel { padding: 20px 16px; }
+  .operation-panel { padding: 20px 16px; }
   .form-actions { align-items: stretch; flex-direction: column; }
   .form-actions .button { width: 100%; }
-  .session-bar { align-items: flex-start; gap: 10px; }
   .footer { flex-direction: column; }
 }
 

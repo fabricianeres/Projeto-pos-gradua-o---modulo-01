@@ -27,10 +27,6 @@ export function conflict(message: string, code = 'CONFLITO'): ApplicationError {
   return new ApplicationError(message, 409, code)
 }
 
-export function unauthorized(message = 'Sessao ausente, invalida ou expirada.'): ApplicationError {
-  return new ApplicationError(message, 401, 'NAO_AUTENTICADO')
-}
-
 export function unprocessable(message: string, code: string): ApplicationError {
   return new ApplicationError(message, 422, code)
 }

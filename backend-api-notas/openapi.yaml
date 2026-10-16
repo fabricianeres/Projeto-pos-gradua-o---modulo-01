@@ -3,56 +3,20 @@ info:
   title: API local de cadastro de notas
   version: 1.0.0
   description: >-
-    API MVP executada somente em loopback. A sessao local identifica o responsavel
-    pela auditoria e nao implementa autorizacao por perfil.
+    API MVP sem autenticacao, executada somente em loopback. Mutacoes sao atribuidas
+    ao ator tecnico api-local para auditoria.
 servers:
   - url: http://127.0.0.1:3000/api/v1
     description: API local de desenvolvimento
 tags:
-  - name: Sessao
   - name: Notas
 paths:
-  /auth/sessao:
-    post:
-      tags: [Sessao]
-      summary: Inicia sessao local de teste
-      description: Credenciais exclusivas de teste; nao usar credenciais institucionais.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Sessao criada.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Session'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    delete:
-      tags: [Sessao]
-      summary: Encerra sessao local
-      security:
-        - bearerSession: []
-      responses:
-        '204':
-          description: Sessao encerrada.
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /ofertas/{ofertaId}/notas:
     parameters:
       - $ref: '#/components/parameters/ofertaId'
     post:
       tags: [Notas]
       summary: Cadastra N1 ou N2
-      security:
-        - bearerSession: []
       requestBody:
         required: true
         content:
@@ -68,8 +32,6 @@ paths:
                 $ref: '#/components/schemas/Note'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -79,8 +41,6 @@ paths:
     get:
       tags: [Notas]
       summary: Lista notas ativas da oferta agrupadas por estudante
-      security:
-        - bearerSession: []
       parameters:
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/pageSize'
@@ -93,8 +53,6 @@ paths:
                 $ref: '#/components/schemas/GradesPage'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /notas/{notaId}:
     parameters:
       - name: notaId
@@ -106,8 +64,6 @@ paths:
     get:
       tags: [Notas]
       summary: Consulta uma nota ativa
-      security:
-        - bearerSession: []
       responses:
         '200':
           description: Nota encontrada.
@@ -115,15 +71,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Note'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
       tags: [Notas]
       summary: Atualiza parcialmente uma nota ativa
-      security:
-        - bearerSession: []
       requestBody:
         required: true
         content:
@@ -139,20 +91,14 @@ paths:
                 $ref: '#/components/schemas/Note'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
     delete:
       tags: [Notas]
       summary: Exclui logicamente uma nota ativa
-      security:
-        - bearerSession: []
       responses:
         '204':
           description: Nota excluida logicamente.
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
   /estudantes/{estudanteId}/notas:
@@ -174,8 +120,6 @@ paths:
     get:
       tags: [Notas]
       summary: Lista notas ativas do estudante em uma oferta
-      security:
-        - bearerSession: []
       responses:
         '200':
           description: Pagina com as notas do estudante.
@@ -185,14 +129,7 @@ paths:
                 $ref: '#/components/schemas/GradesPage'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
 components:
-  securitySchemes:
-    bearerSession:
-      type: http
-      scheme: bearer
-      description: Token opaco de sessao local, em memoria, com expiracao.
   parameters:
     ofertaId:
       name: ofertaId
@@ -219,30 +156,6 @@ components:
         maximum: 10
         default: 10
   schemas:
-    LoginRequest:
-      type: object
-      additionalProperties: false
-      required: [professorId, senha]
-      properties:
-        professorId:
-          type: string
-          minLength: 1
-          maxLength: 100
-        senha:
-          type: string
-          minLength: 1
-          maxLength: 1024
-    Session:
-      type: object
-      required: [token, professorId, expiresAt]
-      properties:
-        token:
-          type: string
-        professorId:
-          type: string
-        expiresAt:
-          type: string
-          format: date-time
     CreateNote:
       type: object
       additionalProperties: false
@@ -358,12 +271,6 @@ components:
   responses:
     BadRequest:
       description: Requisicao malformada ou validacao invalida.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
-    Unauthorized:
-      description: Credenciais invalidas ou sessao ausente/invalida/expirada.
       content:
         application/json:
           schema:

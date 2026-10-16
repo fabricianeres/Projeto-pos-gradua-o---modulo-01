@@ -33,7 +33,7 @@ export interface NotePage<T> {
 }
 
 export interface NoteRepository {
-  create(ofertaId: string, input: CreateNoteInput, professorId: string): Promise<NoteRecord>
+  create(ofertaId: string, input: CreateNoteInput): Promise<NoteRecord>
   findActiveById(notaId: string): Promise<NoteDetails | null>
   listByOffer(ofertaId: string, page: number, pageSize: number): Promise<NotePage<StudentGrades>>
   listByStudent(
@@ -42,12 +42,8 @@ export interface NoteRepository {
     page: number,
     pageSize: number,
   ): Promise<NotePage<StudentGrades>>
-  update(notaId: string, input: UpdateNoteInput, professorId: string): Promise<NoteRecord>
-  softDelete(notaId: string, professorId: string): Promise<void>
-}
-
-export interface ProfessorCredentialRepository {
-  verify(professorId: string, password: string): Promise<boolean>
+  update(notaId: string, input: UpdateNoteInput): Promise<NoteRecord>
+  softDelete(notaId: string): Promise<void>
 }
 
 export interface AccessAuditRepository {

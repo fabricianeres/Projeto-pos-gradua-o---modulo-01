@@ -279,6 +279,9 @@ async function changePage(direction: -1 | 1): Promise<void> {
           <div v-if="operationError" class="error-box" role="alert">
             <strong>{{ operationError.code ? `${operationError.code} — ` : '' }}{{ operationError.message }}</strong>
             <p v-if="operationError.status">HTTP {{ operationError.status }}</p>
+            <p v-if="operationError.code === 'MATRICULA_INATIVA'">
+              Para testar, carregue a massa local no backend com <code>npm run db:seed:test-data</code> ou use uma matrícula ativa da oferta informada.
+            </p>
             <ul v-if="operationError.details?.length">
               <li v-for="(detail, index) in operationError.details" :key="`${detail.campo ?? 'campo'}-${index}`">
                 <strong v-if="detail.campo">{{ detail.campo }}:</strong> {{ detail.mensagem }}

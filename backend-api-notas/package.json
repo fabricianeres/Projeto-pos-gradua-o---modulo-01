@@ -12,6 +12,7 @@
     "start": "node dist/src/index.js",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed-demo-data.ts",
+    "db:seed:test-data": "tsx scripts/seed-test-data.ts",
     "enrollment:seed": "tsx scripts/seed-enrollment.ts",
     "test": "npm run build && node --test dist/src/tests/domain.test.js dist/src/tests/routes.test.js"
   },

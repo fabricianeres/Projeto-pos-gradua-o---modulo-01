@@ -1,0 +1,103 @@
+{
+  "descricao": "Massa fictícia para testes locais da API de cadastro de notas.",
+  "ofertaId": "oferta-massa-teste-2026-1",
+  "estudantes": [
+    {
+      "estudanteId": "estudante-massa-001",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 8.0 },
+        { "numeroNota": 2, "valor": 8.5 }
+      ],
+      "mediaEsperada": 8.3
+    },
+    {
+      "estudanteId": "estudante-massa-002",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 7.0 },
+        { "numeroNota": 2, "valor": 8.0 }
+      ],
+      "mediaEsperada": 7.5
+    },
+    {
+      "estudanteId": "estudante-massa-003",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 8.3 },
+        { "numeroNota": 2, "valor": 8.4 }
+      ],
+      "mediaEsperada": 8.4
+    },
+    {
+      "estudanteId": "estudante-massa-004",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 0.0 },
+        { "numeroNota": 2, "valor": 0.0 }
+      ],
+      "mediaEsperada": 0.0
+    },
+    {
+      "estudanteId": "estudante-massa-005",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 10.0 },
+        { "numeroNota": 2, "valor": 10.0 }
+      ],
+      "mediaEsperada": 10.0
+    },
+    {
+      "estudanteId": "estudante-massa-006",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 1, "valor": 5.5 }
+      ],
+      "mediaEsperada": null
+    },
+    {
+      "estudanteId": "estudante-massa-007",
+      "statusMatricula": "ATIVA",
+      "notas": [
+        { "numeroNota": 2, "valor": 6.5 }
+      ],
+      "mediaEsperada": null
+    },
+    {
+      "estudanteId": "estudante-massa-008",
+      "statusMatricula": "INATIVA",
+      "notas": [],
+      "mediaEsperada": null,
+      "observacaoTeste": "Tentativa de cadastrar nota deve ser rejeitada por matrícula inativa."
+    }
+  ],
+  "cenariosAdicionais": [
+    {
+      "cenario": "Nota fora da escala",
+      "requisicao": {
+        "estudanteId": "estudante-massa-001",
+        "numeroNota": 1,
+        "valor": 10.1
+      },
+      "resultadoEsperado": "Rejeição de validação; nenhum registro deve ser criado."
+    },
+    {
+      "cenario": "Precisão superior a uma casa decimal",
+      "requisicao": {
+        "estudanteId": "estudante-massa-001",
+        "numeroNota": 1,
+        "valor": 8.55
+      },
+      "resultadoEsperado": "Rejeição de validação; nenhum registro deve ser criado."
+    },
+    {
+      "cenario": "Posição já ocupada",
+      "requisicao": {
+        "estudanteId": "estudante-massa-001",
+        "numeroNota": 1,
+        "valor": 9.0
+      },
+      "resultadoEsperado": "HTTP 409; o valor original da N1 deve permanecer inalterado."
+    }
+  ]
+}

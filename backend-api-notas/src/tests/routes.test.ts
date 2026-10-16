@@ -61,3 +61,52 @@ test('allows note routes without authentication and no longer exposes session ro
     await once(server, 'close')
   }
 })
+
+test('creates a note without an authorization header when request data is valid', async () => {
+  const created: NoteRecord = {
+    notaId: '11e7e7ae-8e15-4edb-b55e-2b399bb0f492',
+    ofertaId: 'oferta-1',
+    estudanteId: 'estudante-1',
+    numeroNota: 1,
+    valor: 8.5,
+    observacao: null,
+    criadaEm: '2026-10-16T13:00:00.000Z',
+    atualizadaEm: null,
+  }
+  const repository: NoteRepository = {
+    ...notes,
+    async create(offerId, input) {
+      assert.equal(offerId, 'oferta-1')
+      assert.deepEqual(input, {
+        estudanteId: 'estudante-1',
+        numeroNota: 1,
+        valor: 8.5,
+      })
+      return created
+    },
+  }
+  const app = express()
+  app.use(express.json())
+  app.use('/api/v1', createRoutes(new NoteUseCases(repository)))
+  const server = app.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+
+  try {
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/ofertas/oferta-1/notas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        estudanteId: 'estudante-1',
+        numeroNota: 1,
+        valor: 8.5,
+      }),
+    })
+    assert.equal(response.status, 201)
+    assert.deepEqual(await response.json(), created)
+  } finally {
+    server.close()
+    await once(server, 'close')
+  }
+})

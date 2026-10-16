@@ -36,6 +36,10 @@ O comando `enrollment:seed` existe para desenvolvimento local. Em um ambiente in
 
 `npm run db:seed` insere uma carga sintética e repetível na oferta `oferta-teste-2026-1`: 12 matrículas ativas e até 24 notas (N1/N2), com auditoria para as notas criadas. Reexecutar não duplica as notas ativas. Os identificadores `estudante-001` a `estudante-012` são fictícios e destinados somente a testes locais. As notas já inseridas não são sobrescritas; para repetir testes de alteração/exclusão, use a API com outro banco local descartável ou remova os dados de demonstração manualmente após avaliar seus efeitos.
 
+O arquivo [`test-data/massa-teste.json`](./test-data/massa-teste.json) contém uma massa fictícia com cenários de médias, valores-limite, nota ausente e matrícula inativa, além de casos inválidos esperados. Carregue matrículas e notas iniciais com `npm run db:seed:test-data`. O comando pode ser reexecutado: atualiza o estado das matrículas desta oferta, mas não substitui notas ativas já existentes. Os cenários adicionais no JSON servem para verificar respostas de erro e não são inseridos.
+
+Para cadastrar manualmente uma nota pela API, o estudante precisa ter matrícula `ATIVA` na oferta. Sem esse vínculo, a API retorna `422 MATRICULA_INATIVA`; carregue a massa de teste ou cadastre a matrícula local antes de enviar a nota. Isso preserva a regra de negócio e evita inserir notas sem matrícula.
+
 ## Operações
 
 O contrato completo está em [`openapi.yaml`](./openapi.yaml) e é servido também em `GET /api/v1/openapi.yaml`. Rotas principais:

@@ -1,0 +1,30 @@
+{
+  "name": "backend-api-notas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed-demo-data.ts",
+    "professor:create": "tsx scripts/create-test-professor.ts",
+    "enrollment:seed": "tsx scripts/seed-enrollment.ts",
+    "test": "npm run build && node --test dist/src/tests/domain.test.js dist/src/tests/session.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
+    "tsx": "^4.19.3",
+    "typescript": "~5.7.2"
+  }
+}

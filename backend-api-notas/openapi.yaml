@@ -1,0 +1,388 @@
+openapi: 3.1.0
+info:
+  title: API local de cadastro de notas
+  version: 1.0.0
+  description: >-
+    API MVP executada somente em loopback. A sessao local identifica o responsavel
+    pela auditoria e nao implementa autorizacao por perfil.
+servers:
+  - url: http://127.0.0.1:3000/api/v1
+    description: API local de desenvolvimento
+tags:
+  - name: Sessao
+  - name: Notas
+paths:
+  /auth/sessao:
+    post:
+      tags: [Sessao]
+      summary: Inicia sessao local de teste
+      description: Credenciais exclusivas de teste; nao usar credenciais institucionais.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Sessao criada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [Sessao]
+      summary: Encerra sessao local
+      security:
+        - bearerSession: []
+      responses:
+        '204':
+          description: Sessao encerrada.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /ofertas/{ofertaId}/notas:
+    parameters:
+      - $ref: '#/components/parameters/ofertaId'
+    post:
+      tags: [Notas]
+      summary: Cadastra N1 ou N2
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNote'
+      responses:
+        '201':
+          description: Nota cadastrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+    get:
+      tags: [Notas]
+      summary: Lista notas ativas da oferta agrupadas por estudante
+      security:
+        - bearerSession: []
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Pagina de estudantes com notas ativas e media quando disponivel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradesPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /notas/{notaId}:
+    parameters:
+      - name: notaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Notas]
+      summary: Consulta uma nota ativa
+      security:
+        - bearerSession: []
+      responses:
+        '200':
+          description: Nota encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Notas]
+      summary: Atualiza parcialmente uma nota ativa
+      security:
+        - bearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNote'
+      responses:
+        '200':
+          description: Nota atualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Notas]
+      summary: Exclui logicamente uma nota ativa
+      security:
+        - bearerSession: []
+      responses:
+        '204':
+          description: Nota excluida logicamente.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /estudantes/{estudanteId}/notas:
+    parameters:
+      - name: estudanteId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      - name: ofertaId
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/pageSize'
+    get:
+      tags: [Notas]
+      summary: Lista notas ativas do estudante em uma oferta
+      security:
+        - bearerSession: []
+      responses:
+        '200':
+          description: Pagina com as notas do estudante.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradesPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerSession:
+      type: http
+      scheme: bearer
+      description: Token opaco de sessao local, em memoria, com expiracao.
+  parameters:
+    ofertaId:
+      name: ofertaId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 100
+    page:
+      name: pagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: tamanhoPagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10
+        default: 10
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [professorId, senha]
+      properties:
+        professorId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        senha:
+          type: string
+          minLength: 1
+          maxLength: 1024
+    Session:
+      type: object
+      required: [token, professorId, expiresAt]
+      properties:
+        token:
+          type: string
+        professorId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    CreateNote:
+      type: object
+      additionalProperties: false
+      required: [estudanteId, numeroNota, valor]
+      properties:
+        estudanteId:
+          type: string
+          maxLength: 100
+        numeroNota:
+          type: integer
+          enum: [1, 2]
+        valor:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.1
+        observacao:
+          type: string
+          maxLength: 500
+    UpdateNote:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        valor:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.1
+        observacao:
+          type: [string, 'null']
+          maxLength: 500
+    Note:
+      type: object
+      required: [notaId, ofertaId, estudanteId, numeroNota, valor, observacao, criadaEm, atualizadaEm]
+      properties:
+        notaId:
+          type: string
+          format: uuid
+        ofertaId:
+          type: string
+        estudanteId:
+          type: string
+        numeroNota:
+          type: integer
+          enum: [1, 2]
+        valor:
+          type: number
+        observacao:
+          type: [string, 'null']
+        criadaEm:
+          type: string
+          format: date-time
+        atualizadaEm:
+          type: [string, 'null']
+          format: date-time
+        n1:
+          type: [number, 'null']
+          description: N1 ativa da matricula, quando disponivel.
+        n2:
+          type: [number, 'null']
+          description: N2 ativa da matricula, quando disponivel.
+        media:
+          type: [number, 'null']
+          description: Media aritmetica de N1 e N2, arredondada para uma casa decimal.
+    StudentGrades:
+      type: object
+      required: [estudanteId, ofertaId, n1, n2, media]
+      properties:
+        estudanteId:
+          type: string
+        ofertaId:
+          type: string
+        n1:
+          type: [number, 'null']
+        n2:
+          type: [number, 'null']
+        media:
+          type: [number, 'null']
+    GradesPage:
+      type: object
+      required: [itens, pagina, tamanhoPagina, temProximaPagina]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentGrades'
+        pagina:
+          type: integer
+        tamanhoPagina:
+          type: integer
+          maximum: 10
+        temProximaPagina:
+          type: boolean
+    ApiError:
+      type: object
+      required: [codigo, mensagem, detalhes]
+      properties:
+        codigo:
+          type: string
+        mensagem:
+          type: string
+        detalhes:
+          type: array
+          items:
+            type: object
+            required: [mensagem]
+            properties:
+              campo:
+                type: string
+              mensagem:
+                type: string
+  responses:
+    BadRequest:
+      description: Requisicao malformada ou validacao invalida.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Credenciais invalidas ou sessao ausente/invalida/expirada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Recurso inexistente.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Nota ativa duplicada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unprocessable:
+      description: Regra de negocio ou estado academico invalido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
